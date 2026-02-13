@@ -56,7 +56,9 @@
 <body>
 
 <h1>The Wealth of Working Nations &mdash; Explorer</h1>
-<p class="subtitle">Based on Fern&aacute;ndez-Villaverde, Ventura, and Yao (EER 2025) &middot; Data: World Bank WDI</p>
+<p class="subtitle">Based on Fern&aacute;ndez-Villaverde, Ventura, and Yao (EER 2025)</p>
+<p class="subtitle" style="margin-top:-16px;">Created by Claude Code, with a little help from J. Zachary Mazlish</p>
+<p class="subtitle" style="margin-top:-16px; font-size:0.8em;">GDP is in constant LCU: WB ID NY.GDP.MKTP.KN</p>
 
 <div class="controls">
   <div class="control-group" style="min-width:280px;">
@@ -68,11 +70,16 @@
     </select>
   </div>
 
-  <div class="control-group" style="flex:1; min-width:300px;">
-    <label>Year range</label>
+  <div class="control-group">
+    <label>Start year</label>
     <div class="slider-group">
-      <span class="year-label" id="startLabel">1960</span>
       <input type="range" id="startYear" min="1960" max="2024" value="1991" step="1">
+      <span class="year-label" id="startLabel">1991</span>
+    </div>
+  </div>
+  <div class="control-group">
+    <label>End year</label>
+    <div class="slider-group">
       <input type="range" id="endYear" min="1960" max="2024" value="2024" step="1">
       <span class="year-label" id="endLabel">2024</span>
     </div>
