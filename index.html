@@ -15,8 +15,6 @@
   .control-group { display: flex; flex-direction: column; }
   .control-group label { font-weight: 600; font-size: 0.85em; margin-bottom: 4px; }
   select, input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; }
-  .country-picker { flex: 1; min-width: 350px; }
-  .country-picker select { width: 100%; height: 180px; }
   .slider-group { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .slider-group input[type=range] { flex: 1; min-width: 150px; }
   .slider-group .year-label { font-weight: 600; min-width: 40px; text-align: center; }
@@ -33,8 +31,26 @@
   .presets button { padding: 4px 10px; margin: 2px; border: 1px solid #ccc; border-radius: 3px;
                      background: #f5f5f5; cursor: pointer; font-size: 0.8em; }
   .presets button:hover { background: #e0e0e0; }
-  .search-box { width: 100%; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
-                 font-size: 0.85em; margin-bottom: 4px; }
+  .presets button.active { background: #dbeafe; border-color: #93c5fd; }
+  /* ── Tag / chip selector ── */
+  .tag-container { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; min-height: 28px; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
+          background: #e8f0fe; border: 1px solid #b6d4fe; border-radius: 12px;
+          font-size: 0.8em; color: #1a56db; white-space: nowrap; }
+  .tag .x { cursor: pointer; font-weight: 700; font-size: 1em; color: #6b7280;
+             margin-left: 2px; line-height: 1; }
+  .tag .x:hover { color: #dc2626; }
+  .search-wrap { position: relative; }
+  .search-box { width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px;
+                 font-size: 0.85em; }
+  .search-box:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
+  .dropdown { position: absolute; top: 100%; left: 0; right: 0; max-height: 220px;
+               overflow-y: auto; background: white; border: 1px solid #ccc; border-top: none;
+               border-radius: 0 0 4px 4px; z-index: 100; display: none; }
+  .dropdown.open { display: block; }
+  .dropdown-item { padding: 6px 10px; cursor: pointer; font-size: 0.85em; }
+  .dropdown-item:hover, .dropdown-item.highlight { background: #f0f4ff; }
+  .dropdown-item .iso { color: #999; font-size: 0.8em; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -64,8 +80,8 @@
 </div>
 
 <div class="controls">
-  <div class="control-group country-picker">
-    <label>Countries (Ctrl/Cmd+click to select multiple)</label>
+  <div class="control-group" style="flex:1; min-width:400px;">
+    <label>Countries</label>
     <div class="presets">
       <button onclick="selectPreset('g7esp')">G7 + Spain</button>
       <button onclick="selectPreset('brics')">BRICS</button>
@@ -73,8 +89,12 @@
       <button onclick="selectPreset('asia')">East Asia</button>
       <button onclick="selectPreset('none')">Clear all</button>
     </div>
-    <input type="text" class="search-box" id="countrySearch" placeholder="Type to filter countries...">
-    <select id="countries" multiple></select>
+    <div class="tag-container" id="tags"></div>
+    <div class="search-wrap">
+      <input type="text" class="search-box" id="countrySearch"
+             placeholder="Search to add countries..." autocomplete="off">
+      <div class="dropdown" id="dropdown"></div>
+    </div>
   </div>
 </div>
 
@@ -121,39 +141,108 @@ function getColor(iso, idx) {
 const nameMap = {};
 COUNTRIES.forEach(c => nameMap[c.iso3] = c.name);
 
-// ── Populate country selector ──────────────────────────────────────────
-const sel = document.getElementById("countries");
+// ── Tag-based country selector ─────────────────────────────────────────
+let currentSelection = new Set(PRESETS.g7esp);
+const tagsEl = document.getElementById("tags");
 const searchBox = document.getElementById("countrySearch");
-let allOptions = [];
+const dropdown = document.getElementById("dropdown");
+let highlightIdx = -1;
 
-function buildOptions(filter) {
-  sel.innerHTML = "";
-  const lf = (filter || "").toLowerCase();
-  COUNTRIES.forEach(c => {
-    if (lf && !c.name.toLowerCase().includes(lf) && !c.iso3.toLowerCase().includes(lf)) return;
-    const opt = document.createElement("option");
-    opt.value = c.iso3;
-    opt.textContent = c.name;
-    sel.appendChild(opt);
+function renderTags() {
+  tagsEl.innerHTML = "";
+  currentSelection.forEach(iso => {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.innerHTML = (nameMap[iso] || iso) +
+      ' <span class="x" data-iso="' + iso + '">&times;</span>';
+    tagsEl.appendChild(tag);
   });
-  // Re-apply selection
-  Array.from(sel.options).forEach(opt => {
-    if (currentSelection.has(opt.value)) opt.selected = true;
+  // Attach remove handlers
+  tagsEl.querySelectorAll(".x").forEach(x => {
+    x.addEventListener("click", (e) => {
+      currentSelection.delete(e.target.dataset.iso);
+      renderTags();
+      update();
+    });
   });
 }
 
-let currentSelection = new Set(PRESETS.g7esp);
+function showDropdown() {
+  const query = searchBox.value.toLowerCase();
+  const matches = COUNTRIES.filter(c =>
+    !currentSelection.has(c.iso3) &&
+    (c.name.toLowerCase().includes(query) || c.iso3.toLowerCase().includes(query))
+  ).slice(0, 15);
 
-searchBox.addEventListener("input", () => buildOptions(searchBox.value));
+  if (matches.length === 0 || query.length === 0) {
+    dropdown.classList.remove("open");
+    dropdown.innerHTML = "";
+    highlightIdx = -1;
+    return;
+  }
 
-sel.addEventListener("change", () => {
-  currentSelection = new Set(Array.from(sel.selectedOptions).map(o => o.value));
+  dropdown.innerHTML = matches.map((c, i) =>
+    '<div class="dropdown-item' + (i === highlightIdx ? ' highlight' : '') +
+    '" data-iso="' + c.iso3 + '">' + c.name +
+    ' <span class="iso">' + c.iso3 + '</span></div>'
+  ).join("");
+  dropdown.classList.add("open");
+
+  dropdown.querySelectorAll(".dropdown-item").forEach(item => {
+    item.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      addCountry(item.dataset.iso);
+    });
+  });
+}
+
+function addCountry(iso) {
+  currentSelection.add(iso);
+  searchBox.value = "";
+  highlightIdx = -1;
+  dropdown.classList.remove("open");
+  renderTags();
   update();
+  searchBox.focus();
+}
+
+searchBox.addEventListener("input", () => { highlightIdx = -1; showDropdown(); });
+searchBox.addEventListener("focus", showDropdown);
+searchBox.addEventListener("blur", () => {
+  setTimeout(() => dropdown.classList.remove("open"), 150);
+});
+
+searchBox.addEventListener("keydown", (e) => {
+  const items = dropdown.querySelectorAll(".dropdown-item");
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    highlightIdx = Math.min(highlightIdx + 1, items.length - 1);
+    showDropdown();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    highlightIdx = Math.max(highlightIdx - 1, 0);
+    showDropdown();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (highlightIdx >= 0 && items[highlightIdx]) {
+      addCountry(items[highlightIdx].dataset.iso);
+    }
+  } else if (e.key === "Backspace" && searchBox.value === "") {
+    // Remove last tag
+    const arr = Array.from(currentSelection);
+    if (arr.length > 0) {
+      currentSelection.delete(arr[arr.length - 1]);
+      renderTags();
+      update();
+    }
+  }
 });
 
 function selectPreset(name) {
   currentSelection = new Set(PRESETS[name] || []);
-  buildOptions(searchBox.value);
+  searchBox.value = "";
+  dropdown.classList.remove("open");
+  renderTags();
   update();
 }
 
@@ -241,7 +330,7 @@ function update() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────
-buildOptions("");
+renderTags();
 update();
 </script>
 </body>
